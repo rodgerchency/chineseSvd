@@ -5,6 +5,7 @@ Created on Sat Oct  3 12:41:10 2020
 @author: rodger
 """
 
+import cv2
 import os
 import numpy as np
 from keras.preprocessing import image as Image
@@ -19,106 +20,129 @@ class DataLoader:
         self._w = w; self._h = h
         self._area = self._w * self._h
         self._currIdx = 0
-
+        kernel_mean = (np.array([[1, 1, 1],
+                                    [1, 1, 1],
+                                    [1, 1, 1]]))
         print(self._w, self._h)
 
-        # Train DataSet
-        self._trainImages=[]
-        self._trainFileNames = []
-        self._trainLabelOneHots = []
-
+        # train data
         trainFiles = os.listdir('./trainData')
-        Random.shuffle(trainFiles)
+        print(len(trainFiles))
+        # Train DataSet
+        self._trainImages=[[] for _ in range(109)]
+        self._trainFileNames = [[] for _ in range(109)]
+        lastName = ''
+        idx = -1
         for f in trainFiles:
             img_path = './trainData/' + f
-            self._trainFileNames.append(f[0]) # 紀錄第一個字
+            if lastName != f[0]:
+                if idx == -1:
+                    idx = 0
+                else:
+                    idx = idx + 1                
+                self._trainFileNames[idx] = f[0]
+                lastName = f[0]
+            # img = Image.load_img(img_path, grayscale=True)
+            # img_array = Image.img_to_array(img)
             img = Image.load_img(img_path, grayscale=True)
-            img_array = Image.img_to_array(img)
-            self._trainImages.append(img_array)
+            img_sobel = self.sobelFilter(Image.img_to_array(img) / 255)
+            img_sobelMean = self.convolution(kernel_mean, img_sobel) * 255
+            img_array = Image.img_to_array(img_sobelMean)
+            self._trainImages[idx].append(img_array)
         
-        self._trainLabels = [] # input idx of image to find the Unicode of trainImage
-        for twName in self._trainFileNames:
-            self._trainLabels.append(ord(twName))
-        
-        # Test DataSet
-        self._testImages=[]
-        self._testFileNames = []
-        self._testLabelOneHots = []
-
+        # test data
         testFiles = os.listdir('./testData')
-        Random.shuffle(testFiles)
+        print(len(testFiles))
+        # Train DataSet
+        self._testImages=[[] for _ in range(109)]
+        self._testFileNames = [[] for _ in range(109)]
+        lastName = ''
+        idx = -1
         for f in testFiles:
             img_path = './testData/' + f
-            self._testFileNames.append(f[0]) # 紀錄第一個字
+            if lastName != f[0]:    
+                if idx == -1:
+                    idx = 0
+                else:
+                    idx = idx + 1                            
+                self._testFileNames[idx] = f[0]
+                lastName = f[0]
+            # img = Image.load_img(img_path, grayscale=True)
+            # img_array = Image.img_to_array(img)            
             img = Image.load_img(img_path, grayscale=True)
-            img_array = Image.img_to_array(img)
-            self._testImages.append(img_array)
-
-        self._testLabels = [] # input idx of image to find the Unicode of trainImage
-        for twName in self._testFileNames:
-            self._testLabels.append(ord(twName))
-
-        # EncodeMap        
-        self._encodeMap = [] # 
-        newLabels = []
-        # 先統計
-        for label in self._trainLabels:
-            if not label in self._encodeMap:
-                self._encodeMap.append(int(label))
-        self._encodeMap.sort()
-
-        # 
-        self._trainImages = np.array(self._trainImages)
-        self._trainImages = abs(1 - (self._trainImages / 255))
-        self._trainImages = self._trainImages.reshape(self._trainImages.shape[0], self._area).astype('float32')
-
-        self._testImages = np.array(self._testImages)
-        self._testImagesAbs = abs(1 - (self._testImages / 255))
-        self._testImagesAbs = self._testImagesAbs.reshape(self._testImagesAbs.shape[0], self._area).astype('float32')
+            img_sobel = self.sobelFilter(Image.img_to_array(img) / 255)
+            img_sobelMean = self.convolution(kernel_mean, img_sobel) * 255
+            img_array = Image.img_to_array(img_sobelMean)
+            self._testImages[idx].append(img_array)
+        # 檢查資料
+        # for i in range(109):            
+        #     # print(self._trainFileNames[i] == self._testFileNames[i])
+        #     print( i , ",",len(self._trainImages[i]) , len(self._testImages[i]))
         
-        trainLabels = []
-        for label in self._trainLabels:
-            trainLabels.append(self._encodeMap.index(label))
-        
-        testLabels = []
-        for label in self._testLabels:
-            testLabels.append(self._encodeMap.index(label))
-
-        self._trainLabelOneHots = np.array(np_utils.to_categorical(trainLabels))
-        self._testLabelOneHots = np.array(np_utils.to_categorical(testLabels))
-
-    def getBatch(self, size):
-        
-        total = self._trainImages.shape[0]
-        if total < self._currIdx + size:
-            diff = (self._currIdx + size) - total
-            last = size - diff
-            trainImg = np.concatenate((self._trainImages[self._currIdx: self._currIdx + last + 1], self._trainImages[0: diff]))
-            trainLabel = np.concatenate((self._trainLabelOneHots[self._currIdx: self._currIdx + last + 1], self._trainLabelOneHots[0: diff]))
-            self._currIdx = diff
-        else:
-            trainImg = self._trainImages[self._currIdx: self._currIdx + size]
-            trainLabel = self._trainLabelOneHots[self._currIdx: self._currIdx + size]
-            self._currIdx = self._currIdx + size
-            if self._currIdx == total:
-                self._currIdx = 0
-        return trainImg, trainLabel
-
-
-    def getTrain(self):
-        return self._trainImages, self._trainLabelOneHots
-
-    def getTest(self):
-        return self._testImagesAbs, self._testLabelOneHots
-
-    # ex : loader.showLabel(trainLabels[1])
-    # idx : trainLabel
-    def showLabel(self, idx):
-        print(self._encodeMap[idx], ',' + chr(self._encodeMap[idx]))
-        return chr(self._encodeMap[idx])
-    def getChinaResult(self, idx):
-        return chr(self._encodeMap[idx])
+    def getTrainDigits(self):
+        return self._trainImages
     
-    def getTestImg(self, idx):
-        return self._testImages[idx]
+    def getTestDigits(self):
+        return self._testImages
+    
+    def getLabel(self, idx):
+        return self._trainFileNames[idx]
+        
+    def saveImg(self):
+        for i in range(10):
+            cv2.imwrite('img_train' + str(i) + '.jpg', self._trainImages[i])
+            cv2.imwrite('img_test' + str(i) + '.jpg', self._testImages[i])
 
+    def convolution (self, _k, _image):
+
+        # the weighed pixels have to be in range 0..1, so we divide by the sum of all kernel
+        # values afterwards
+        kernel_sum = _k.shape[0] * _k.shape[1]
+        
+        # fetch the dimensions for iteration over the pixels and weights
+        i_width, i_height = _image.shape[0], _image.shape[1]
+        k_width, k_height = _k.shape[0], _k.shape[1]
+        
+        # prepare the output array
+        filtered = np.zeros_like(_image)
+        
+        # Iterate over each (x, y) pixel in the image ...
+        for y in range(i_height):
+            for x in range(i_width):
+                weighted_pixel_sum = 0
+                for ky in range(k_height):
+                    for kx in range(k_width):                    
+                        if y - 1 < 0 or y + 1 >= i_height or x - 1 < 0 or x + 1 >= i_width:
+                            continue
+                        pixel_y = y + (ky - 1)
+                        pixel_x = x + (ky - 1)              
+                        weighted_pixel_sum += _k[ky, kx] * _image[pixel_y, pixel_x]  
+                        
+                filtered[y, x] = weighted_pixel_sum / kernel_sum
+        
+        return filtered
+        
+    #
+    #   z1 z2 z3
+    #   z4 z5 z6
+    #   z7 z8 z9
+    #
+    def sobelFilter (self, _image):
+        i_width, i_height = _image.shape[0], _image.shape[1]
+        # prepare the output array
+        filtered = np.zeros_like(_image)
+        for y in range(i_height):
+            for x in range(i_width):
+                    
+                if y - 1 < 0 or y + 1 >= i_height or x - 1 < 0 or x + 1 >= i_width:
+                    continue
+                z1 = _image[y - 1, x - 1];
+                z2 = _image[y - 1, x];
+                z3 = _image[y - 1, x + 1];
+                z4 = _image[y, x - 1];
+                z6 = _image[y, x + 1];
+                z7 = _image[y + 1, x - 1];
+                z8 = _image[y + 1, x];
+                z9 = _image[y + 1, x + 1];
+                filtered[y, x] = abs(z7 + 2*z8 + z9 - z1 - 2*z2 - z3) + abs(z3 + 2*z6 + z9 - z1 - 2*z4 - z7)
+        return filtered
